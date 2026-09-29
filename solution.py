@@ -221,3 +221,50 @@ class Solver:
             crystal_status = crystal_status[:crystal_idx] + (1,) + crystal_status[crystal_idx + 1:]
         game_over = env.grid_data[row][col] == env.LAVA_TILE
         return GameState(row, col, crystal_status), reward, game_over
+
+    def get_action_outcomes(self, state: GameState, action):
+        """
+        Outcomes of 1 action as (probability, next_state, reward, game_over) tuples.
+        Walk and jump are deterministic, a boost branches over the distance (0 to 4 tiles) with
+        env.boost_probabilities.
+        """
+        env = self.game_env
+        on_crater = env.grid_data[state.row][state.col] == env.CRATER_TILE
+
+        if action in env.JUMP_ACTIONS:
+            if not on_crater:
+                return [(1.0, state, 0.0, False)] # invalid, skipped
+            distances = [(1, 1.0)]
+        elif action in env.WALK_ACTIONS:
+            if on_crater:
+                return [(1.0, state, 0.0, False)] # invalid, skipped
+            distances = [(1, 1.0)]
+        else:
+            if on_crater:
+                return [(1.0, state, 0.0, False)] # invalid, skipped
+            distances = [(d, p) for d, p in enumerate(env.boost_probabilities) if p > 0.0]
+
+        outcomes = []
+        for distance, prob in distances:
+            next_state, reward, game_over = self.move(state, action, distance)
+            outcomes.append((prob, next_state, reward, game_over))
+        return outcomes
+
+    def get_noise_outcomes(self, action):
+        """
+        Enumerate the drift / double-move outcomes of the original action as (probability, [movements]) pairs.
+        From GameEnv.apply_action_noise
+        """
+        env = self.game_env
+        p_drift = env.random_drift_prob
+        p_double = env.random_double_prob
+        # (movement, probability of that direction): original, or drift to one of the 2 perpendicular directions
+        directions = [(action, 1.0 - p_drift)]
+        for perpendicular in env.PERPENDICULAR_ACTIONS[action]:
+            directions.append((perpendicular, p_drift / 2.0))
+
+        outcomes = []
+        for movement, p_direction in directions:
+            outcomes.append((p_direction * (1.0 - p_double), [movement])) # single movement
+            outcomes.append((p_direction * p_double, [movement, movement])) # double movement
+        return [(p, m) for p, m in outcomes if p > 0.0]
