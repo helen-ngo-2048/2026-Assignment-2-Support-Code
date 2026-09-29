@@ -19,15 +19,23 @@ Last updated by vp 09/09/2026
 
 class Solver:
 
-    STUDENT_NAME = "Crystal Rover" # replace with your name
-    STUDENT_ID = "12345678"  # replace with your student ID
-    GITHUB_USERNAME = "cool-comp3702-student" # replace with your GitHub username
+    STUDENT_NAME = "Helen Ngo" # replace with your name
+    STUDENT_ID = "48814553"  # replace with your student ID
+    GITHUB_USERNAME = "helen-ngo-2048" # replace with your GitHub username
+    DELTAS = {
+            'LEFT': (0, -1),
+            'RIGHT': (0, 1),
+            'UP': (-1, 0),
+            'DOWN': (1, 0),
+        }
 
     def __init__(self, game_env: GameEnv):
         self.game_env = game_env
         #
         # TODO: Define any class instance variables you require (e.g. dictionary mapping state to VI value) here.
         #
+        # Fast lookup crystal position to avoid O(N) with dictionary comprehension (I've taken comp3400)
+        self.crystal_index = {pos: i for i, pos in enumerate(game_env.crystal_positions)}
         pass
 
     @staticmethod
@@ -180,9 +188,36 @@ class Solver:
         pass
 
     # === Helper Methods ===============================================================================================
-    #
-    #
-    # TODO: Add any additional methods here
-    #
-    #
+    
+    def move(self, state: GameState, action, distance):
+        # Re-implementation of the movement part of GameEnv.apply_dynamics
+        env = self.game_env
+        reward = -1 * env.ACTION_COST[action]
+        delta_row, delta_col = self.DELTAS[env._action_direction(action)]
+        row, col = state.row, state.col
 
+        for _ in range(distance):
+            candidate_row = row + delta_row
+            candidate_col = col + delta_col
+            if not (0 <= candidate_row < env.n_rows and 0 <= candidate_col < env.n_cols) \
+                    or env.grid_data[candidate_row][candidate_col] == env.ROCK_TILE:
+                reward -= env.collision_penalty
+                break
+
+            row, col = candidate_row, candidate_col
+
+            # fall into a crater
+            if env.grid_data[row][col] == env.CRATER_TILE:
+                break
+
+            # fall into lava
+            if env.grid_data[row][col] == env.LAVA_TILE:
+                reward -= env.game_over_penalty
+                break
+
+        crystal_status = state.crystal_status
+        crystal_idx = self.crystal_index.get((row, col))
+        if crystal_idx is not None and crystal_status[crystal_idx] == 0:
+            crystal_status = crystal_status[:crystal_idx] + (1,) + crystal_status[crystal_idx + 1:]
+        game_over = env.grid_data[row][col] == env.LAVA_TILE
+        return GameState(row, col, crystal_status), reward, game_over
