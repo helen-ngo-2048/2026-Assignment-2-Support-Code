@@ -34,6 +34,8 @@ class Solver:
 
     def __init__(self, game_env: GameEnv):
         self.game_env = game_env
+
+        # MPD model
         self.states = None # list of reachable GameState objects; index = row/column in the arrays below
         self.state_indices = None # dict: GameState -> index in self.states
         self.terminal_mask = None # bool array |S|: True for solved / game-over states
@@ -45,6 +47,11 @@ class Solver:
         self.crystal_index = {pos: i for i, pos in enumerate(game_env.crystal_positions)}
         # cache of get_transition_outcomes results, key is (state, action)
         self.outcome_cache = {}
+
+        # Value Iteration
+        self.vi_values = None # numpy array |S|: V(s)
+        self.vi_policy = None # list of actions, one per state
+        self.vi_max_delta = numpy.inf # largest change in V(s) during the last iteration
         pass
 
     @staticmethod
@@ -61,36 +68,45 @@ class Solver:
         """
         Initialise any variables required before the start of Value Iteration.
         """
-        #
-        # TODO: Implement any initialisation for Value Iteration (e.g. building a list of states) here. You should not
-        #  perform value iteration in this method.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        self.build_model()
+        self.vi_values = numpy.zeros(len(self.states)) # Helper guide
+        self.vi_policy = [GameEnv.ACTIONS[0]] * len(self.states)
+        self.vi_max_delta = numpy.inf
 
     def vi_is_converged(self):
         """
         Check if Value Iteration has reached convergence.
         :return: True if converged, False otherwise
         """
-        #
-        # TODO: Implement code to check if Value Iteration has reached convergence here.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        return self.vi_max_delta < self.game_env.epsilon
 
     def vi_iteration(self):
         """
         Perform a single iteration of Value Iteration (i.e. loop over the state space once).
         """
-        #
-        # TODO: Implement code to perform a single iteration of Value Iteration here.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        # adapted from VISolver.vi_iteration. Sync update, new values only use prev iteration's values
+        gamma = self.game_env.gamma
+        new_values = numpy.zeros(len(self.states))
+        new_policy = list(self.vi_policy)
+        for i, state in enumerate(self.states):
+            if self.terminal_mask[i]:
+                continue
+            best_q = -numpy.inf
+            best_action = None
+            for action in self.get_valid_actions(state):
+                # Q(s, a) = sum_s' P(s' | s, a) * (R(s, a, s') + gamma * V(s'))
+                total = 0.0
+                for prob, next_state, reward in self.get_transition_outcomes(state, action):
+                    total += prob * (reward + gamma * self.vi_values[self.state_indices[next_state]])
+                if total > best_q:
+                    best_q = total
+                    best_action = action
+            new_values[i] = best_q
+            new_policy[i] = best_action
+
+        self.vi_max_delta = numpy.abs(new_values - self.vi_values).max()
+        self.vi_values = new_values
+        self.vi_policy = new_policy
 
     def vi_plan_offline(self):
         """
