@@ -34,8 +34,10 @@ class Solver:
         #
         # TODO: Define any class instance variables you require (e.g. dictionary mapping state to VI value) here.
         #
-        # Fast lookup crystal position to avoid O(N) with dictionary comprehension (I've taken comp3400)
+        # Fast lookup crystal position to avoid O(N)
         self.crystal_index = {pos: i for i, pos in enumerate(game_env.crystal_positions)}
+        # cache of get_transition_outcomes results, key is (state, action)
+        self.outcome_cache = {}
         pass
 
     @staticmethod
@@ -268,3 +270,63 @@ class Solver:
             outcomes.append((p_direction * (1.0 - p_double), [movement])) # single movement
             outcomes.append((p_direction * p_double, [movement, movement])) # double movement
         return [(p, m) for p, m in outcomes if p > 0.0]
+
+    def apply_actions(self, state: GameState, action_sequence):
+        """
+        Apply a sequence of (1 or 2 same) actions. Returns [(prob, state, reward)].
+        Reward adds up, stops early if game over.
+        """
+        current_outcomes = [(1.0, state, 0.0, False)]
+        
+        for action in action_sequence:
+            next_outcomes = []
+            
+            for prob, current_state, total_reward, game_over in current_outcomes:
+                if game_over:
+                    # If already in lava, stop executing further actions in the sequence
+                    next_outcomes.append((prob, current_state, total_reward, game_over))
+                    continue
+                
+                for step_prob, next_state, step_reward, step_game_over in self.get_action_outcomes(current_state, action):
+                    next_outcomes.append((
+                        prob * step_prob,
+                        next_state,
+                        total_reward + step_reward,
+                        step_game_over
+                    ))
+
+            current_outcomes = next_outcomes
+            
+        # Strip game_over flag
+        return [(p, s, r) for p, s, r, _ in current_outcomes]
+
+    def is_terminal_state(self, state: GameState):
+        return self.game_env.is_solved(state) or self.game_env.is_game_over(state)
+
+    def get_transition_outcomes(self, state: GameState, action):
+        """
+        Return a list of tuples for every possible outcome of performing the given
+        action in the given state.
+        Enumerate the drift and double-move combinations and their probabilities,
+        for each combination apply the actions, branching on the boost distance.
+        """
+        key = (state, action)
+        cached = self.outcome_cache.get(key)
+        if cached is not None:
+            return cached
+
+        if self.is_terminal_state(state):
+            outcomes = []
+        else:
+            merged = {} # (next_state, rounded reward) -> [probability, reward]
+            for noise_prob, movements in self.get_noise_outcomes(action):
+                for prob, next_state, reward in self.apply_actions(state, movements):
+                    merge_key = (next_state, round(reward, 9))
+                    if merge_key in merged:
+                        merged[merge_key][0] += noise_prob * prob
+                    else:
+                        merged[merge_key] = [noise_prob * prob, reward]
+            outcomes = [(p, next_state, reward) for (next_state, _), (p, reward) in merged.items()]
+
+        self.outcome_cache[key] = outcomes
+        return outcomes
