@@ -52,6 +52,11 @@ class Solver:
         self.vi_values = None # numpy array |S|: V(s)
         self.vi_policy = None # list of actions, one per state
         self.vi_max_delta = numpy.inf # largest change in V(s) during the last iteration
+
+        # Policy Iteration
+        self.pi_policy = None # numpy int array |S|: index of the action for each state
+        self.pi_values = None # numpy array |S|: value of the current policy
+        self.pi_converged = False
         pass
 
     @staticmethod
@@ -151,25 +156,18 @@ class Solver:
         """
         Initialise any variables required before the start of Policy Iteration.
         """
-        #
-        # TODO: Implement any initialisation for Policy Iteration (e.g. building a list of states) here. You should not
-        #  perform policy iteration in this method. You can assume an initial policy of always applying WALK_RIGHT.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        self.build_model()
+        # initial policy is always WALK_RIGHT
+        self.pi_policy = numpy.full(len(self.states), self.action_indices[GameEnv.WALK_RIGHT], dtype = numpy.int64)
+        self.pi_values = numpy.zeros(len(self.states))
+        self.pi_converged = False
 
     def pi_is_converged(self):
         """
         Check if Policy Iteration has reached convergence.
         :return: True if converged, False otherwise
         """
-        #
-        # TODO: Implement code to check if Policy Iteration has reached convergence here.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        return self.pi_converged
 
     def pi_iteration(self):
         """
