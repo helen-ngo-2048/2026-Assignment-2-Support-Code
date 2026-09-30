@@ -42,6 +42,7 @@ class Solver:
         self.valid_mask = None # bool array |S| x |A|: True if action a is valid in state s
         self.t_model = None # float array |S| x |A| x |S|: P(s' | s, a)
         self.r_model = None # float array |S| x |A|: expected immediate reward R(s, a)
+        self.action_indices = {a: i for i, a in enumerate(GameEnv.ACTIONS)} # action string -> column index
 
         # Fast lookup crystal position to avoid O(N)
         self.crystal_index = {pos: i for i, pos in enumerate(game_env.crystal_positions)}
@@ -174,12 +175,8 @@ class Solver:
         Perform a single iteration of Policy Iteration (i.e. perform one step of policy evaluation and one step of
         policy improvement).
         """
-        #
-        # TODO: Implement code to perform a single iteration of Policy Iteration (evaluation + improvement) here.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        self.pi_values = self.policy_evaluation()
+        self.policy_improvement(self.pi_values)
 
     def pi_plan_offline(self):
         """
@@ -200,12 +197,10 @@ class Solver:
         :param state: the current state
         :return: optimal action for the given state (element of ACTIONS)
         """
-        #
-        # TODO: Implement code to return an action for the given state (based on your stored PI policy) here.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        index = self.state_indices.get(state)
+        if index is None:
+            return self.get_valid_actions(state)[0]
+        return GameEnv.ACTIONS[self.pi_policy[index]]
 
     # === Helper Methods ===============================================================================================
     
@@ -402,3 +397,26 @@ class Solver:
                 for prob, next_state, reward in self.get_transition_outcomes(state, action):
                     self.t_model[i, j, self.state_indices[next_state]] += prob
                     self.r_model[i, j] += prob * reward
+
+    def policy_evaluation(self):
+        # Adapted from PISolverLinAlg.policy_evaluation
+        state_numbers = numpy.arange(len(self.states))
+        t_pi = self.t_model[state_numbers, self.pi_policy]
+        r_pi = self.r_model[state_numbers, self.pi_policy]
+        a_matrix = numpy.identity(len(self.states)) - self.game_env.gamma * t_pi
+        return numpy.linalg.solve(a_matrix, r_pi)
+
+    def policy_improvement(self, values):
+        """
+        pi'(s) = argmax_a Q(s, a), with Q = R + gamma * (T @ V^pi);
+        Adapted from PISolverLinAlg.policy_improvement
+        """
+        q_values = self.r_model + self.game_env.gamma * (self.t_model @ values)
+        q_values[~self.valid_mask] = -numpy.inf
+
+        new_policy = numpy.argmax(q_values, axis = 1)
+        new_policy[self.terminal_mask] = self.pi_policy[self.terminal_mask]
+        policy_changed = not numpy.array_equal(new_policy, self.pi_policy)
+
+        self.pi_policy = new_policy
+        self.pi_converged = not policy_changed
