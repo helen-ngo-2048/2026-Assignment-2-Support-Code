@@ -127,13 +127,12 @@ class Solver:
         :param state: the current state
         :return: V(s)
         """
-        #
-        # TODO: Implement code to return the value V(s) for the given state (based on your stored VI values) here. If a
-        #  value for V(s) has not yet been computed, this function should return 0.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        if self.vi_values is None:
+            return 0.0
+        index = self.state_indices.get(state)
+        if index is None:
+            return 0.0
+        return float(self.vi_values[index])
 
     def vi_select_action(self, state: GameState):
         """
@@ -141,12 +140,10 @@ class Solver:
         :param state: the current state
         :return: optimal action for the given state (element of ACTIONS)
         """
-        #
-        # TODO: Implement code to return the optimal action for the given state (based on your stored VI values) here.
-        #
-        # In order to ensure compatibility with tester, you should avoid adding additional arguments to this function.
-        #
-        pass
+        index = self.state_indices.get(state)
+        if index is None:
+            return self.get_valid_actions(state)[0]
+        return self.vi_policy[index]
 
     # === Policy Iteration =============================================================================================
 
