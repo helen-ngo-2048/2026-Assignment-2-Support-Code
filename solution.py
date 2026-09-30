@@ -1,8 +1,11 @@
 import sys
 import time
+import numpy
 
 from game_env import GameEnv
 from game_state import GameState
+from collections import deque
+
 """
 solution.py
 
@@ -31,9 +34,13 @@ class Solver:
 
     def __init__(self, game_env: GameEnv):
         self.game_env = game_env
-        #
-        # TODO: Define any class instance variables you require (e.g. dictionary mapping state to VI value) here.
-        #
+        self.states = None # list of reachable GameState objects; index = row/column in the arrays below
+        self.state_indices = None # dict: GameState -> index in self.states
+        self.terminal_mask = None # bool array |S|: True for solved / game-over states
+        self.valid_mask = None # bool array |S| x |A|: True if action a is valid in state s
+        self.t_model = None # float array |S| x |A| x |S|: P(s' | s, a)
+        self.r_model = None # float array |S| x |A|: expected immediate reward R(s, a)
+
         # Fast lookup crystal position to avoid O(N)
         self.crystal_index = {pos: i for i, pos in enumerate(game_env.crystal_positions)}
         # cache of get_transition_outcomes results, key is (state, action)
@@ -330,3 +337,57 @@ class Solver:
 
         self.outcome_cache[key] = outcomes
         return outcomes
+
+    def get_valid_actions(self, state: GameState):
+        """
+        Valid actions in the given state
+        """
+        env = self.game_env
+        on_crater = env.grid_data[state.row][state.col] == env.CRATER_TILE
+        # Jump only valid in crater, walk and boost outside crater
+        return [a for a in GameEnv.ACTIONS if (a in env.JUMP_ACTIONS) == on_crater]
+
+    def build_model(self):
+        """
+        Build the MDP model: the reachable state space (bfs), the transition tensor
+        t_model[s, a, s'], the expected reward array r_model[s, a] and the valid action mask.
+        Gen AI (Claude Sonnet 5.5) was used to help generate line 356 - 370 of this function.
+        """
+        if self.states is not None:
+            return
+
+        # states/state_indices adapted from GridworldEnv.states/ PISolverLinAlg.state_indices
+        init_state = self.game_env.get_init_state()
+        self.states = [init_state]
+        self.state_indices = {init_state: 0}
+        queue = deque([init_state])
+
+        while queue:
+            state = queue.popleft()
+            if self.is_terminal_state(state):
+                continue
+            for action in self.get_valid_actions(state):
+                for _, next_state, _ in self.get_transition_outcomes(state, action):
+                    if next_state not in self.state_indices:
+                        self.state_indices[next_state] = len(self.states)
+                        self.states.append(next_state)
+                        queue.append(next_state)
+
+        # Transition tensor + expected reward
+        n_states = len(self.states)
+        n_actions = len(GameEnv.ACTIONS)
+        self.t_model = numpy.zeros([n_states, n_actions, n_states])
+        self.r_model = numpy.zeros([n_states, n_actions])
+        self.valid_mask = numpy.zeros([n_states, n_actions], dtype = bool)
+        self.terminal_mask = numpy.zeros(n_states, dtype = bool)
+
+        for i, state in enumerate(self.states):
+            if self.is_terminal_state(state):
+                self.terminal_mask[i] = True
+                continue
+            valid_actions = set(self.get_valid_actions(state))
+            for j, action in enumerate(GameEnv.ACTIONS):
+                self.valid_mask[i, j] = action in valid_actions
+                for prob, next_state, reward in self.get_transition_outcomes(state, action):
+                    self.t_model[i, j, self.state_indices[next_state]] += prob
+                    self.r_model[i, j] += prob * reward
