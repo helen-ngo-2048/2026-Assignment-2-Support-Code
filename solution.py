@@ -35,7 +35,7 @@ class Solver:
     def __init__(self, game_env: GameEnv):
         self.game_env = game_env
 
-        # MPD model
+        # MPD model, adapted from PISolverLinAlg.__init__
         self.states = None # list of reachable GameState objects; index = row/column in the arrays below
         self.state_indices = None # dict: GameState -> index in self.states
         self.terminal_mask = None # bool array |S|: True for solved / game-over states
@@ -89,6 +89,7 @@ class Solver:
     def vi_iteration(self):
         """
         Perform a single iteration of Value Iteration (i.e. loop over the state space once).
+        Gen AI (Claude Sonnet 5.5) was used to debug during this method's implementation.
         """
         # adapted from VISolver.vi_iteration. Sync update, new values only use prev iteration's values
         gamma = self.game_env.gamma
@@ -175,6 +176,7 @@ class Solver:
         Perform a single iteration of Policy Iteration (i.e. perform one step of policy evaluation and one step of
         policy improvement).
         """
+        # Adapted from PISolverLinAlg.pi_iteration
         self.pi_values = self.policy_evaluation()
         self.policy_improvement(self.pi_values)
 
@@ -248,15 +250,15 @@ class Solver:
 
         if action in env.JUMP_ACTIONS:
             if not on_crater:
-                return [(1.0, state, 0.0, False)] # invalid, skipped
+                return [(1.0, state, 0.0, False)]
             distances = [(1, 1.0)]
         elif action in env.WALK_ACTIONS:
             if on_crater:
-                return [(1.0, state, 0.0, False)] # invalid, skipped
+                return [(1.0, state, 0.0, False)]
             distances = [(1, 1.0)]
         else:
             if on_crater:
-                return [(1.0, state, 0.0, False)] # invalid, skipped
+                return [(1.0, state, 0.0, False)]
             distances = [(d, p) for d, p in enumerate(env.boost_probabilities) if p > 0.0]
 
         outcomes = []
@@ -267,8 +269,7 @@ class Solver:
 
     def get_noise_outcomes(self, action):
         """
-        Enumerate the drift / double-move outcomes of the original action as (probability, [movements]) pairs.
-        From GameEnv.apply_action_noise
+        Enumerate the drift/ double-move outcomes of the original action as (probability, [movements]) pairs.
         """
         env = self.game_env
         p_drift = env.random_drift_prob
@@ -322,6 +323,7 @@ class Solver:
         action in the given state.
         Enumerate the drift and double-move combinations and their probabilities,
         for each combination apply the actions, branching on the boost distance.
+        Gen AI (Claude Sonnet 5.5) was used to implement this method
         """
         key = (state, action)
         cached = self.outcome_cache.get(key)
@@ -357,7 +359,7 @@ class Solver:
         """
         Build the MDP model: the reachable state space (bfs), the transition tensor
         t_model[s, a, s'], the expected reward array r_model[s, a] and the valid action mask.
-        Gen AI (Claude Sonnet 5.5) was used to help generate line 356 - 370 of this function.
+        Gen AI (Claude Sonnet 5.5) was used to help generate line 356 - 370 of this method.
         """
         if self.states is not None:
             return
